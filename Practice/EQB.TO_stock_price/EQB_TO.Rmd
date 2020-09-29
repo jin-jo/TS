@@ -1,0 +1,80 @@
+---
+title: "EQB.TO Stock Price"
+author: "Jin Seo Jo"
+date: "28/09/2020"
+output: rmarkdown::github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.path = "README_figs/README-")
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include = FALSE}
+library(fpp2)
+library(fpp3)
+library(ggfortify)
+library(forecast)
+library(ggthemes)
+library(gridExtra)
+library(tseries)
+```
+
+## Stylized fact of time series
+### Examnine the stock price of EQB.TO
+```{r}
+eqb_data <- ts(read.csv("EQB.TO.csv", header = TRUE)[,6], frequency =  12, start = c(2004, 6))
+
+autoplot(eqb_data) + 
+  theme_fivethirtyeight() +
+  ggtitle("EQB.TO stock price")
+```
+
+### The stiationary of a time series is usually examined using the unit root test. 
+```{r}
+adf.test(eqb_data)
+```
+
+```{r}
+g3 <- ggsubseriesplot(eqb_data) +
+  theme_fivethirtyeight() +
+  ggtitle("EQB.TO")
+
+g4 <- ggAcf(eqb_data) +
+  ggtitle("ACF") +
+  theme_fivethirtyeight()
+
+grid.arrange(g3, g4, ncol = 2)
+```
+
+## Time Series Decompostion
+```{r}
+eqb_data %>% stl(t.window = 13, s.window = "periodic", robust = TRUE) %>% 
+  autoplot() +
+  ggtitle("EQB.TO") +
+  theme_fivethirtyeight()
+```
+
+## Forecasting
+```{r}
+fit1 <- stlf(eqb_data, method = "rwdrift")
+fit2 <- stlf(eqb_data, method = "arima")
+fit3 <- stlf(eqb_data, method = "ets")
+fit4 <- stlf(eqb_data, method = "naive")
+
+l1 <- autoplot(fit1) +
+  ggtitle("random walk") +
+  theme_fivethirtyeight()
+l2 <- autoplot(fit2) +
+  ggtitle("arima") +
+  theme_fivethirtyeight()
+l3 <- autoplot(fit3) +
+  ggtitle("ets") +
+  theme_fivethirtyeight()
+l4 <- autoplot(fit4) +
+  ggtitle("naive") +
+  theme_fivethirtyeight()
+
+grid.arrange(l1, l2, l3, l4, ncol = 2)
+```
+
