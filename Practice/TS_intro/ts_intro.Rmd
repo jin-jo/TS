@@ -1,0 +1,281 @@
+---
+title: "Introduction to Time Series"
+author: "Jin Seo Jo"
+date: "05/10/2020"
+output: html_output
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(fpp3)
+library(ggplot2)
+library(ggfortify)
+library(tidyverse)
+library(tidyquant)
+library(forecast)
+library(dygraphs)
+```
+
+## What is Time Series?
+
+### Time seires data
+Definition: data collected sequentially over time  
+
+What does this time series data look like?
+```{r}
+# Note: `AirPassengers` comes from `fpp3`
+AirPassengers
+```
+
+Plot the time series of `AirPassengers` - simple R plot and interactive time series plot
+```{r}
+# Simple R plot
+plot(AirPassengers, type = "o", main = "Monthly Airline Passenger Numbers 1949-1960")
+grid()
+```
+
+```{r}
+# Interactive time series plot
+# dygraph(AirPassengers)
+```
+
+```{r}
+# Seasonal plot using R basic function
+monthplot(AirPassengers)
+```
+
+#### Stylized facts or empirical chracteristics of time series data
+From the above Airline passenger data set, we can see  
+- Trend
+- Seasonality
+- Non-constant variance
+- Serially correlated (autocorrelated) observations
+
+### Time series model
+#### Time series model
+**Time series models** are mathematical models to capture the main characteristics of time series data, such as autoregressive moving average model (ARMA) and generalized autoregressive conditional heteroskedasticity (GARCH) model.
+
+#### White noise
+A time series is **white noise** if the variables are IID with a mean of zero.  
+$X_{t}$ is a white noise process if it satisfies  
+1) $E(X_{t}) = 0, \forall t$  
+2) $Var(X_{t}) = \sigma^2, \forall t$  
+3) $Cov(X_{t}, X_{s}) = 0, \forall t \neq s$
+That is, $X_{t} \sim NID(0, \sigma^2)$
+
+#### Autocovariance and autocorrelation functions
+- **Autocovariance function**: $\gamma(h) = Cov(X_{t}, X_{t+h}), \forall t,s$
+- **Autocorrelation function (ACF)**: $\rho(h) = \frac{\gamma(h)}{\gamma(0)}$
+Note: h represents time lag
+
+#### Weak Stationarity
+1) Stochastic process as a collection of random variables (random vector) over time  
+2) Strict stationaryity implies weak stationarity  
+3) Weak Stationarity:
+a) $E(X_{t}) = \mu < \infty$ 
+b) $E(|X_{t}|^2) = c < \infty$ 
+c) $Cov(X_{t}, X_{s}) = f(|t-s|)$ and independent of time  
+Example: $Cov(X_{1}, X_{5}) = Cov(X_{2}, X_{6}) = Cov(X_{t}, X_{t+4}) = f(|4|)$
+
+#### Sample autocovariance and autocorrelation functions
+- How is SACF plot constructed?
+$$\hat{\rho} \sim N(0, \frac{1}{n}), \; h = 1,2,3,...$$
+- What do we see from the SACF plot of the simulated time series?
+```{r}
+# Simulate a white noise process
+# 100 IID observations from standard normal distribution
+set.seed(1234)
+simRV <- rnorm(100)
+acf(simRV, col = 2, main = "SACF of simulated Gaussian time series", cex = 0.75)
+```
+
+## Introduction to Time Series Modelling
+Classical decomposition decomposes time series into trend, seasonal/cyclical, and irregular components.
+
+#### Methods to model **trend** component:
+- function of time
+- differencing (Box-Jenkins approach)
+- Other smoothing methods, such as moving average and LOESS
+
+#### Methods to model **seasonal** component:
+- functions of dummmy variables or collection of sine and cosine funcitons
+- Seasonal differencing (Box-Jenkins approach)
+- Other methods, such as periodic time series model
+
+#### Methods to model irregular component:
+- Box-Jenkins approach ( autoregressive and moving average model)
+- Others
+
+### Classical decomposition in R
+To apply classical decomposition, we first resolve **non-constant variance**
+```{r}
+# Estimate the parater of transformation using "forcast" package
+lambda <- BoxCox.lambda(AirPassengers)
+# Transform "AirPassengers" data using variance stablizing transformation. 
+air <- ts(BoxCox(AirPassengers, lambda), start = c(1949, 1), freq = 12)
+plot(air, type = "o", main = "Monthly Airline Passenger Numbers 1949-1960 after transformation")
+grid()
+```
+```{r}
+# Plot time series data using autoplot/ggplot2
+autoplot(air) + 
+  ggtitle("Monthly Airline Passenger Numbers 1949-1960 after transformation") +
+  ylab("thousand") +
+  xlab("time") +
+  theme_minimal()
+```
+
+We then conduct the classical decomposition using `stl` function.
+```{r}
+plot(stl(air, s.window = 35), main = "Illustration of classical decomposition using STL")
+```
+
+Alternatively, we may conduct clssical decomposition using decompose funciton.
+```{r}
+plot(decompose(air))
+```
+
+Retrieve components of classical decomposition
+```{r}
+# What do we have after using `stl`
+air.stl <- stl(air, s.window = 35)
+names(air.stl)
+```
+```{r}
+# Output from classical decomposition
+head(air.stl$time.series)
+```
+```{r}
+# Pick up 'trend' component from the classical decomposition
+autoplot(air.stl$time.series[,"trend"]) +
+  ylab("") +
+  ggtitle("Trend component") +
+  theme_minimal()
+```
+```{r}
+# Pick up 'seasonal' component from the classical decomposition
+autoplot(air.stl$time.series[,"seasonal"]) +
+  ylab("") +
+  ggtitle("Seasonal component") +
+  theme_minimal()
+```
+```{r}
+# Pick up 'irregular' component from the classical decomposition
+autoplot(air.stl$time.series[,"remainder"]) +
+  ylab("") +
+  ggtitle("Irregular component") +
+  theme_minimal()
+```
+
+## Modeling Irregular Components Using ARMA Models
+In this section, we consider the approach of modeling `irregular` component using Box-Jenkins approach (or ARMA models).
+
+### Mathematical formulation of ARMA models
+- ARMA modles assume that time series $\{X_{t}\}$ is weakly stationary and satisfies the following representation:
+$$X_{t} - \phi_{1}X_{t-1} - ... - \phi_{p}X_{t-p} = a_{t} + \theta_{1}a_{t-1} + ... + \theta_{q}a_{t-q}, \\ a_{t} \sim WN(0, \sigma^2)$$
+If $\{X_{t}\}$ satisfies the above equation, we call $\{X_{t}\}$ follows an ARMA(p,q) model.
+- AR and MA models are special cases of ARMA models:
+  - AR(p) model:
+  $$X_{t} - \phi_{1}X_{t-1} - ... - \phi_{p}X_{t-p} = a_{t}$$
+  - MA(q) model:
+  $$X_{t} = a_{t} + \theta_{1}a_{t-1} + ... + \theta_{q}a_{t-q}$$
+- Consider backward shift operator (B) that shifts time series over time
+$$B^kX_{t} = X_{t-k}$$
+where k is a positive integer.  
+Note: $BX_{t} = X_{t-1}$, $Bt = t-1$, $B^2X_{t} = X_{t-2}$, $B^2t = t-2$
+
+### How to choose an ARMA model for our data (Model selection)
+- Select the order of an AR(p) model using sample partial autocorrelation functions.
+- Select the order of an MA(q) model using sample autocorrelation functions.
+- Select the order of an ARMA(p,q) model using information criterion.
+- What to choose among AR, MA, and ARMA models?
+- **Pormanteau tests** are used to check if the selected ARMA model is adequate. If the selected model fails the pormanteau test (small p-value), we should re-select an ARMA model for the data.
+
+### Empirical Example of modeling irregular component
+1) Time series plot
+```{r}
+# Retreive the irregular component from STL
+air.remainder <- stl(air, s.window = 35)$time.series[,"remainder"]
+# Plot the irregular component
+autoplot(air.remainder) +
+  ggtitle("Irregular component of transformed Airline Passenger")
+```
+
+2) Model identification using SACF/SPACF
+```{r}
+# Create the ACF and PACF plots
+par(mfrow = c(1,2), cex = 0.5)
+acf(air.remainder, lwd = 2, col = "red", main = NA)
+pacf(air.remainder, lwd = 2, col = "red", main = NA)
+```
+
+3) Model estimation
+```{r}
+# Model selection based on ACF, PACF, and information criterion (aic)
+mod.acf <- arima(air.remainder, c(0,0,12), include.mean = FALSE)
+mod.pacf <- arima(air.remainder, c(8,0,0), include.mean = FALSE)
+mod.auto <- auto.arima(air.remainder, seasonal = FALSE, stationary = TRUE, allowmean = FALSE)
+```
+
+Estimation Results
+```{r}
+# Model selection based on acf
+mod.acf
+```
+```{r}
+# Model selection based on pacf
+mod.pacf
+```
+```{r}
+# Model selection based on aic
+mod.auto
+```
+
+4) Information criterion
+One of the most popular information criteria for selecting ARMA models is AIC. R defines AIC as
+$$ 2 \times k - 2 \times (loglikelihood)$$
+where k stands for the number of paraeters estimated in our model, including the variance of noise terms. Using this definition, we can reproduce the AIC for three fitted models.
+```{r}
+# Output from R
+# names(mod.acf)
+# Estimates of MA parameters # mod.acf$coef
+# AIC from fitted MA model
+mod.acf$aic
+```
+```{r}
+# Calculate AIC based on definition
+2*(length(mod.acf$coef)+1)-2*mod.acf$loglik
+```
+
+Compare AIC among three fitted models:
+```{r}
+list(MA12 = mod.acf$aic, AR8 = mod.pacf$aic, ARMA22 = mod.auto$aic)
+```
+
+5) Model adequacy test
+The ARMA(2,2) model selected by `forecast` package does not pass the model adequacy test at the 95% CI.
+```{r}
+# Conduct Ljung-Box test
+Box.test(mod.pacf$resid, lag = 24, type = c("Ljung-Box"), fitdf = 8)$p.value
+Box.test(mod.pacf$resid, lag = 24, type = c("Ljung-Box"), fitdf = 12)$p.value
+Box.test(mod.pacf$resid, lag = 24, type = c("Ljung-Box"), fitdf = 4)$p.value
+```
+
+### Automatic model forecasting using `forcast` package in R
+```{r, message = FALSE}
+# Forecast based on Autoregressive model of order 8
+d.forecast <- forecast(mod.pacf, level = c(95), h = 50)
+autoplot(d.forecast)
+```
+```{r}
+# Forecast the transformed AirPassengers using STL
+autoplot(forecast(stlm(air, s.window = 35), level = c(95), h = 50))
+```
+```{r}
+# Forecast the AirPassengers using STL
+autoplot(forecast(stlm(AirPassengers, s.window = 35, lambda = lambda), level = c(95), h = 50))
+```
+
